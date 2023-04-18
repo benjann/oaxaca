@@ -1,4 +1,4 @@
-*! version 4.0.8  28feb2023  Ben Jann
+*! version 4.0.9  18apr2023  Ben Jann
 
 program define oaxaca, byable(recall) properties(svyj svyb)
     version 9.2
@@ -458,7 +458,8 @@ program define OAXACA
             }
         }
     }
-    qui replace `touse' = 0 if `touse1'==0 & `touse2'==0
+    qui replace `touse' = 0 if (`touse1'==0 & `touse2'==0) ///
+        | !((`touse1' & `by'==`group1') | (`touse2' & `by'==`group2'))
 
 // Estimate pooled model or restore reference model
     local g 2
