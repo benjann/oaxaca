@@ -13,6 +13,13 @@ To install `oaxaca` from GitHub, type
 
 Main changes:
 
+    18apr2023 (version 4.1.0)
+    - further improved identification of estimation sample in case of -svy-; a
+      consistent set of observations is now used across models even if there are
+      missings; point estimates are not affected by the change but SEs may be
+      slightly different from previous version if some of the variables contain
+      missings
+
     18apr2023 (version 4.0.9)
     - total number of obervations reported by oaxaca when applied with option -svy-
       did not exclude observations with missing values on the analyzed variables; these

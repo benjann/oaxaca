@@ -1,4 +1,4 @@
-*! version 4.0.9  18apr2023  Ben Jann
+*! version 4.1.0  18apr2023  Ben Jann
 
 program define oaxaca, byable(recall) properties(svyj svyb)
     version 9.2
@@ -397,8 +397,15 @@ program define OAXACA
         `qui' di as txt _n "Model for group `g'"
         local mlbl`g' "model `g'"
         if "`svy'"!="" {
+            // first run other group's model to determine estimation sample
+            // (i.e., identify relevant observations from other group)
+            local g0 = 3 - `g'
+            qui svy `svy_vcetype', subpop(`svy_subpop' & `by'==`group`g0'') `svy_opts': ///
+             `cmd`g0'' `depvar' `xvars' `cmd`g0'rhs' if `touse', ///
+             `options' `cmd`g0'opts'
+            // run group model
             `qui' svy `svy_vcetype', subpop(`svy_subpop' & `by'==`group`g'') `svy_opts': ///
-             `cmd`g'' `depvar' `xvars' `cmd`g'rhs' if `touse', ///
+             `cmd`g'' `depvar' `xvars' `cmd`g'rhs' if e(sample), ///
              `options' `cmd`g'opts'
         }
         else {
@@ -458,8 +465,7 @@ program define OAXACA
             }
         }
     }
-    qui replace `touse' = 0 if (`touse1'==0 & `touse2'==0) ///
-        | !((`touse1' & `by'==`group1') | (`touse2' & `by'==`group2'))
+    qui replace `touse' = 0 if `touse1'==0 & `touse2'==0
 
 // Estimate pooled model or restore reference model
     local g 2
