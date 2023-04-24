@@ -1,5 +1,5 @@
 {smcl}
-{* 28feb2023}{...}
+{* 24apr2023}{...}
 {hi:help oaxaca}{...}
 {right:{browse "http://github.com/benjann/oaxaca/"}}
 {hline}
@@ -108,7 +108,13 @@
     {p_end}
 {synopt :{opt eform}}report exponentiated results
     {p_end}
-{synopt :{opt nole:gend}}suppress legend
+{synopt :{opt noh:eader}}suppress table header
+    {p_end}
+{synopt :{opt nodef:initions}}suppress information on definition of decomposition terms
+    {p_end}
+{synopt :{opt notab:le}}suppress coefficients table
+    {p_end}
+{synopt :{opt nole:gend}}suppress legend on variable sets in detailed decomposition
     {p_end}
 {synoptline}
 {p 4 6 2}
@@ -218,7 +224,13 @@ categorical variable and {cmd:d1x}, {cmd:d2x}, and {cmd:d3x} are
 interactions of these indicators with a continuous variable {cmd:x}. You
 could then type
 
-        {com:... normalize(d1 d2 d3) normalize(d1x d2x d3x # x) ...}
+        {com:... x normalize(d1 d2 d3) normalize(d1x d2x d3x # x) ...}
+
+{pstd}
+To aggregate all decomposition terms related to {cmd:x} and {cmd:d}, you could
+type 
+
+        {com:... (xd: x normalize(d1 d2 d3) normalize(d1x d2x d3x # x)) ...}
 
 
 {title:Options}
@@ -392,11 +404,24 @@ and predictor values on which the decomposition is based.
 {opt level(#)} specifies the confidence level, as a percentage, for confidence
 intervals.  The default is {cmd:level(95)} or as set by {helpb set level}.
 
-{phang} {opt eform} specifies that the results be displayed in
+{phang}
+{opt eform} specifies that the results be displayed in
 exponentiated form.
 
-{phang} {opt nolegend} suppresses the legend about the sets of independent
-variables.
+{phang}
+{opt noheader} suppresses the display of the table header.
+
+{phang}
+{opt nodefinitions} suppresses the display of the definitions of the decomposition
+terms in the table header.
+
+{phang}
+{opt notable} suppresses the display of the output table containing the
+decomposition results.
+
+{phang}
+{opt nolegend} suppresses the display of the legend about the sets of independent
+variables in the detailed decomposition.
 
 
 {title:Examples}
@@ -437,10 +462,14 @@ variables.
     {p_end}
 {synopt:{cmd:e(N_clust)}}number of clusters
     {p_end}
+{synopt:{cmd:e(k_eq)}}number of equations in {cmd:e(b)}
+    {p_end}
 
 {synoptset 15 tabbed}{...}
 {p2col 5 15 19 2: Macros}{p_end}
 {synopt:{cmd:e(cmd)}}{cmd:oaxaca}
+    {p_end}
+{synopt:{cmd:e(cmdline)}}command as typed
     {p_end}
 {synopt:{cmd:e(title)}}{cmd:Blinder-Oaxaca decomposition}
     {p_end}
@@ -459,6 +488,8 @@ empty
     {p_end}
 {synopt:{cmd:e(weights)}}weights specified by {cmd:weight()} or
 empty
+    {p_end}
+{synopt:{cmd:e(split)}}{cmd:split} or empty
     {p_end}
 {synopt:{cmd:e(refcoefs)}}{cmd:pooled}, {cmd:omega}, name of
 reference model, or empty
@@ -509,17 +540,20 @@ empty
 {phang}
 Fairlie, Robert W. (2005). An extension of the Blinder-Oaxaca decomposition 
 technique to logit and probit models. Journal of Economic and Social 
-Measurement 30: 305-316.
+Measurement 30: 305-316. DOI: {browse "https://doi.org/10.3233/JEM-2005-0259":10.3233/JEM-2005-0259}
+[Working paper: {browse "https://www.iza.org/publications/dp/1917/"}]
 
-{phang} Jann, Ben (2008). The Blinder-Oaxaca decomposition for
-linear regression models. The Stata Journal 8(4): 453-479. [Working
-paper version available from: {browse "http://ideas.repec.org/p/ets/wpaper/5.html"}]
+{phang} Jann, Ben (2008). The Blinder-Oaxaca decomposition for linear regression models. The
+Stata Journal 8(4): 453-479. DOI: {browse "https://doi.org/10.1177/1536867X0800800401":10.1177/1536867X0800800401}
+[Working paper: {browse "http://ideas.repec.org/p/ets/wpaper/5.html"}]
 
 {phang} Yun, Myeong-Su (2004). Decomposing differences in the
-first moment. Economics Letters 82: 275-280.
+first moment. Economics Letters 82: 275-280. DOI: {browse "https://doi.org/10.1016/j.econlet.2003.09.008":10.1016/j.econlet.2003.09.008}
+[Working paper: {browse "https://www.iza.org/publications/dp/877/"}]
 
 {phang} Yun, Myeong-Su (2005). A Simple Solution to the Identification
-Problem in Detailed Wage Decompositions. Economic Inquiry 43: 766-772.
+Problem in Detailed Wage Decompositions. Economic Inquiry 43: 766-772. DOI: {browse "https://doi.org/10.1093/ei/cbi053":10.1093/ei/cbi053}
+[Working paper: {browse "https://www.iza.org/publications/dp/836/"}]
 
 
 {title:Author}

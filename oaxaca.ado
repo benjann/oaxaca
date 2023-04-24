@@ -1,4 +1,4 @@
-*! version 4.1.0  18apr2023  Ben Jann
+*! version 4.1.1  24apr2023  Ben Jann
 
 program define oaxaca, byable(recall) properties(svyj svyb)
     version 9.2
@@ -9,10 +9,15 @@ program define oaxaca, byable(recall) properties(svyj svyb)
 
     *local version : di "version " string(_caller()) ":"
     syntax [anything] [if] [in] [fw aw pw iw] [ , ///
-        SVY SVY2(str asis) vce(str) cluster(passthru) Robust noSE * ]
+        SVY SVY2(str asis) vce(str) cluster(passthru) Robust noSE ///
+        eform xb noLEgend Level(passthru) noDEFinitions noTable noHeader * ]
+    if c(stata_version)>=11 {
+        _get_diopts diopts options, `options'
+    }
+    local diopts `diopts' `eform' `xb' `legend' `level' `definitions' `table' `header'
+    local options `level' `options'
 
-    marksample touse, novarlist zeroweight
-
+    if `"`weight'"'!="" local wgt [`weight'`exp']
     if `"`svy2'"'!="" {
         Parsesvyopt `svy2'
         local svy svy
@@ -34,10 +39,12 @@ program define oaxaca, byable(recall) properties(svyj svyb)
             qui svyset
             local svy_type "`r(vce)'"
         }
-        if inlist(`"`svy_type'"',"brr","jackknife") {
+        if `"`svy_type'"'!="linearized" {
             local se "nose"
-            svy `svy_type', `svy_opts': ///
-                oaxaca `anything' if `touse', `se' `options'
+            svy `svy_type', noheader notable `svy_opts': ///
+                oaxaca `anything' `if' `in', `se' `options'
+            e_cmdline oaxaca `0'
+            Display, `diopts'
             exit
         }
     }
@@ -45,17 +52,21 @@ program define oaxaca, byable(recall) properties(svyj svyb)
         Parsevceopt `vce'
         if inlist(`"`vce_type'"',"bootstrap","jackknife") {
             local se "nose"
-            `vce_type', `vce_opts': ///
-                oaxaca `anything' if `touse' [`weight'`exp'], `se' `options'
+            `vce_type', noheader notable `vce_opts': ///
+                oaxaca `anything' `if' `in' `wgt', `se' `options'
+            e_cmdline oaxaca `0'
+            Display, `diopts'
             exit
         }
     }
-    OAXACA `anything' if `touse' [`weight'`exp'], ///
+    OAXACA `anything' `if' `in' `wgt', ///
         `svy' svy2(`svy2') vce(`vce') `cluster' `robust' `se' `options'
+    e_cmdline oaxaca `0'
+    Display, `diopts'
 end
 
 program Parsesvyopt
-    syntax [anything] [, * ]
+    syntax [anything] [, noTABle noHeader * ]
     local len = strlen(`"`anything'"')
     if `"`anything'"'==substr("jackknife",1,max(4,`len')) local anything "jackknife"
     c_local svy_type `"`anything'"'
@@ -63,7 +74,7 @@ program Parsesvyopt
 end
 
 program Parsevceopt
-    syntax [anything] [, * ]
+    syntax [anything] [, noTABle noHeader  * ]
     local len = strlen(`"`anything'"')
     if `"`anything'"'==substr("jackknife",1,max(4,`len'))      local anything "jackknife"
     else if `"`anything'"'==substr("bootstrap",1,max(4,`len')) local anything "bootstrap"
@@ -71,83 +82,165 @@ program Parsevceopt
     c_local vce_opts `"`options'"'
 end
 
+program e_cmdline, eclass
+    ereturn local cmdline `"`0'"'
+end
+
 prog Display, eclass
-    syntax [, level(passthru) eform xb noLEgend ]
+    syntax [, level(passthru) eform xb noLEgend noDEFinitions noTable noHeader * ]
     if e(cmd)!="oaxaca" {
         error 301
     }
-    if "`eform'"!="" {
-        local eform "eform(exp(b))"
-        tempname b
-        mat `b' = e(b)
-        local coln: colnames `b'
-        local newcoln: subinstr local coln "_cons" "__cons", word count(local cons)
-        if `cons' {
-            mat coln `b' = `newcoln'
-            ereturn repost b = `b', rename
-        }
-    }
+    if "`eform'"!="" local eform "eform(exp(b))"
     
-    if c(stata_version)<14 {
-        if `"`e(prefix)'"'=="" {
-            local w1 15
-            local c1 51
+    if "`header'"=="" {
+        if c(stata_version)<14 {
+            if `"`e(prefix)'"'=="" {
+                local w1 15
+                local c1 51
+                local c2 = `c1' + `w1' + 1
+                local w2 10
+                local c3 = `c2' + 2
+            }
+            else {
+                local w1 18
+                local c1 49
+                local c2 = `c1' + `w1' + 1
+                local w2 9
+                local c3 = `c2' + 2
+            }
+            _coef_table_header, nomodeltest
+        }
+        else {
+            local hflex 1
+            if      c(stata_version)<17            local hflex 0
+            else if d(`c(born_date)')<d(13jul2021) local hflex 0
+            local w1 17
+            local c1 49
             local c2 = `c1' + `w1' + 1
             local w2 10
             local c3 = `c2' + 2
+            if `hflex' local headopts head2left(`w1') head2right(`w2')
+            else       local headopts
+            _coef_table_header, nomodeltest `headopts'
+            if `hflex' {
+                // if _coef_table_header used more space than allocated
+                local offset1 = max(0, `s(head2_left)' - `w1')
+                local offset2 = max(0, `s(head2_right)' - `w2')
+                local c1 = `c1' - `offset1' - `offset2'
+                local c2 = `c2' - `offset2'
+            }
         }
-        else {
-            local w1 18
-            local c1 49
-            local c2 = `c1' + `w1' + 1
-            local w2 9
-            local c3 = `c2' + 2
+        di as txt _col(`c1') "Model" _col(`c2') "=" _col(`c3') as res %`w2's e(model)
+        di as txt "Group 1: `e(by)' = " as res e(group_1) ///
+           as txt _col(`c1') "N of obs 1" _col(`c2') "=" _col(`c3') as res %`w2'.0gc e(N_1)
+        if `"`e(N_1_selected)'"'!="" {
+            di as txt _col(`c1') "N selected 1" _col(`c2') "=" ///
+                _col(`c3') as res %`w2'.0gc e(N_1_selected)
         }
-        _coef_table_header
+        di as txt "Group 2: `e(by)' = " as res e(group_2) ///
+           as txt _col(`c1') "N of obs 2" _col(`c2') "=" _col(`c3') as res %`w2'.0gc e(N_2)
+        if `"`e(N_2_selected)'"'!="" {
+            di as txt _col(`c1') "N selected 2" _col(`c2') "=" ///
+                _col(`c3') as res %`w2'.0gc e(N_2_selected)
+        }
+        di ""
+        
+        if "`definitions'"=="" {
+            Display_definitions
+            di ""
+        }
     }
-    else {
-        local hflex 1
-        if      c(stata_version)<17            local hflex 0
-        else if d(`c(born_date)')<d(13jul2021) local hflex 0
-        local w1 17
-        local c1 49
-        local c2 = `c1' + `w1' + 1
-        local w2 10
-        local c3 = `c2' + 2
-        if `hflex' local headopts head2left(`w1') head2right(`w2')
-        else       local headopts
-        _coef_table_header, `headopts'
-        if `hflex' {
-            // if _coef_table_header used more space than allocated
-            local offset1 = max(0, `s(head2_left)' - `w1')
-            local offset2 = max(0, `s(head2_right)' - `w2')
-            local c1 = `c1' - `offset1' - `offset2'
-            local c2 = `c2' - `offset2'
-        }
-    }
-    di as txt _col(`c1') "Model" _col(`c2') "=" _col(`c3') as res %`w2's e(model)
-    di as txt "Group 1: `e(by)' = " as res e(group_1) ///
-       as txt _col(`c1') "N of obs 1" _col(`c2') "=" _col(`c3') as res %`w2'.0g e(N_1)
-    di as txt "Group 2: `e(by)' = " as res e(group_2) ///
-       as txt _col(`c1') "N of obs 2" _col(`c2') "=" _col(`c3') as res %`w2'.0g e(N_2)
-    di ""
 
-    eret display, `level' `eform'
-    if "`eform'"!="" {
-        if `cons' {
-            mat `b' = e(b)
-            mat coln `b' = `coln'
-            ereturn repost b = `b', rename
+    if "`table'"=="" {
+        if c(stata_version)<12 {
+            if "`eform'"!="" {
+                // make sure that _cons will be included in display
+                tempname b
+                mat `b' = e(b)
+                local coln: colnames `b'
+                local newcoln: subinstr local coln "_cons" "__cons", word count(local cons)
+                if `cons' {
+                    mat coln `b' = `newcoln'
+                    ereturn repost b = `b', rename
+                }
+            }
+        }
+        eret display, `level' `eform' `options'
+        if c(stata_version)<12 {
+            if "`eform'"!="" & `cons' {
+                mat `b' = e(b)
+                mat coln `b' = `coln'
+                ereturn repost b = `b', rename
+            }
+        }
+        if "`legend'"=="" {
+            Display_legend
+        }
+        if `"`e(adjust)'"'!="" {
+            di as txt "(adjusted by `e(adjust)')"
         }
     }
-    if "`legend'"=="" {
-        Display_legend
-    }
-    if `"`e(adjust)'"'!="" {
-        di as txt "(adjusted by `e(adjust)')"
-    }
+
     if `"`xb'"'!="" {
         Display_b0, `level'
+    }
+end
+
+prog Display_definitions
+    if `"`e(threefold)'"'!="" {
+        if `"`e(threefold)'"'!="threefold(reverse)" {
+            local bref "{bf:b2}"
+            local bint "b1 - b2"
+            local Xref "{bf:X2}"
+        }
+        else {
+            local bref "{bf:b1}"
+            local bint "b2 - b1"
+            local Xref "{bf:X1}"
+        }
+        di as txt "   endowments: (X1 - X2) * `bref'"
+        di as txt " coefficients: `Xref' * (b1 - b2)"
+        di as txt "  interaction: (X1 - X2) * (`bint')"
+        exit
+    }
+    if `"`e(weights)'"'=="1" {
+        local bref "{bf:b1}"
+        local Xref "{bf:X2}"
+    }
+    else if `"`e(weights)'"'=="0" {
+        local bref "{bf:b2}"
+        local Xref "{bf:X1}"
+    }
+    else {
+        local bref "{bf:b}"
+        local Xref
+    }
+    di as txt "    explained: (X1 - X2) * `bref'"
+    if "`e(split)'"!="" {
+        di as txt " unexplained1: X1 * (b1 - `bref')"
+        di as txt " unexplained2: X2 * (`bref' - b2)"
+    }
+    else if "`Xref'"=="" {
+        di as txt "  unexplained: X1 * (b1 - `bref') + X2 * (`bref' - b2)"  
+    }
+    else {
+        di as txt "  unexplained: `Xref' * (b1 - b2)"
+    }
+    if "`Xref'"=="" {
+        local bdef `"`e(refcoefs)'"'
+        if `"`bdef'"'!="" {
+            if `"`bdef'"'=="pooled" local bdef "from pooled model (including group dummy)"
+            else if `"`bdef'"'=="omega" local bdef "from pooled model (without group dummy)"
+            else local bdef `"from model {stata estimates replay `bdef':{bf:`bdef'}}"'
+        }
+        else {
+            local bdef `"`e(weights)'"'
+            if `: list sizeof bdef'==1 local bdef `:di %8.0g `bdef''
+            else local bdef "{stata display e(weights):w}"
+            local bdef "= `bdef' * b1  + (1 - `bdef') * b2"
+        }
+        di as txt `"               with `bref' `bdef'"'
     }
 end
 
@@ -201,10 +294,9 @@ program define OAXACA
         MODEL1(str asis) MODEL2(str asis)                   ///
         relax NOIsily                                       ///
         Noisily2 /// undocumented: display results from -suest- and -mean-
-        eform xb noLEgend Level(passthru)                   ///
-        * ]
+        Level(passthru) * ]
 
-// Options: model type
+    // Options: model type
     if "`linear'`logit'`probit'"=="" local linear linear  // default
     if "`linear'"!="" local cmd regress
     local cmd `cmd' `logit' `probit'
@@ -219,7 +311,7 @@ program define OAXACA
         }
     }
 
-// Options: decomposition type
+    // Options: decomposition type
     if `"`pooled2'"'!="" local pooled pooled
     if `"`omega2'"'!=""  local omega omega
     if `"`threefold2'"'!="" {
@@ -248,7 +340,7 @@ program define OAXACA
         if `"`cmd`i''"'=="" local cmd`i' "`cmd'"
     }
 
-// Options: suest, vce, svy
+    // Options: suest, vce, svy
     if "`noisily'`noisily2'"=="" local qui quietly
     local se = "`se'"==""
     if `"`fixed2'"'!="" local fixed
@@ -273,7 +365,7 @@ program define OAXACA
     if `se'==0 | "`nosuest'"!="" {
         local suest
     }
-    local suest = cond("`suest'"!="",1,0)
+    local suest = "`suest'"!=""
     local regweight "`weight'"
     if "`weight'"=="pweight" & `suest'  local regweight "iweight"
     if `suest'                          local regvce  // disable robust
@@ -288,10 +380,10 @@ program define OAXACA
             di as err "invalid subpop() option"
             exit 198
         }
-        //=> svy `svy_vcetype', subpop(`svy_subpop') `svy_opts': ...
+        //=> svy `svy_type', subpop(`svy_subpop') `svy_opts': ...
     }
 
-// Expand varlist (generate xvars and vgroups)
+    // Expand varlist (generate xvars and vgroups)
     gettoken depvar rest: anything
     if `"`depvar'"'=="" {
         di as err "too few variables specified"
@@ -346,10 +438,12 @@ program define OAXACA
         di as err "invalid varlist; duplicate varnames not allowed"
         exit 198
     }
-    if `"`normalize'"'=="" & `"`categorical'"'!="" { // old syntax: parse categorical()
+    if `"`normalize'"'=="" & `"`categorical'"'!="" {
+        // old syntax: parse categorical()
         ParseCategorical, vars(`vars') xvars(`xvars') `categorical'
     }
-    foreach group of local normalize { // make sure interaction terms are in model
+    foreach group of local normalize {
+        // make sure interaction terms are in model
         gettoken cons: group
         if "`cons'"=="_cons" continue
         if `: list cons in vars'==0 {
@@ -361,7 +455,8 @@ program define OAXACA
     local xvars: subinstr local xvars "_cons" "", word
     local vars: subinstr local vars "_offset" "", word
     local xvars: subinstr local xvars "_offset" "", word
-    if `"`vgroups'"'=="" & `"`detail2'"'!="" {  // old syntax: parse detail2()
+    if `"`vgroups'"'=="" & `"`detail2'"'!="" {
+        // old syntax: parse detail2()
         if "`detail'"!="" {
             di as err "nodetail and detail() not both allowed"
             exit 198
@@ -370,12 +465,20 @@ program define OAXACA
     }
     if "`detail'"!="" local vgroups
 
-// Mark sample and determine groups
+    // Mark sample and determine groups
     marksample touse, zeroweight novarlist
     if "`svy'"!="" {
         svymarkout `touse'
+        if `"`svy_subpop'"'!="" {
+            tempname subpop
+            Marksubpop `svy_subpop', g(`subpop')
+            replace `subpop' = 0 if `touse'==0
+        }
+        else local subpop `touse'
     }
-    qui levelsof `by' if `touse', local(groups)
+    else local subpop `touse'
+    markout `subpop' `by'
+    qui levelsof `by' if `subpop', local(groups)
     if `: list sizeof groups'>2 {
         di as err "more than 2 groups found, only 2 groups allowed"
         exit 420
@@ -389,7 +492,7 @@ program define OAXACA
         gettoken group1: group1, quotes
     }
 
-// Estimate group models
+    // Estimate group models
     local haserrmsg 0
     local robreg = (`suest'==0 & `se')
     tempvar touse1 touse2 subpop1 subpop2
@@ -397,46 +500,50 @@ program define OAXACA
         `qui' di as txt _n "Model for group `g'"
         local mlbl`g' "model `g'"
         if "`svy'"!="" {
-            // first run other group's model to determine estimation sample
-            // (i.e., identify relevant observations from other group)
-            local g0 = 3 - `g'
-            qui svy `svy_vcetype', subpop(`svy_subpop' & `by'==`group`g0'') `svy_opts': ///
-             `cmd`g0'' `depvar' `xvars' `cmd`g0'rhs' if `touse', ///
-             `options' `cmd`g0'opts'
-            // run group model
-            `qui' svy `svy_vcetype', subpop(`svy_subpop' & `by'==`group`g'') `svy_opts': ///
-             `cmd`g'' `depvar' `xvars' `cmd`g'rhs' if e(sample), ///
-             `options' `cmd`g'opts'
+            if `g'==1 {
+                // first run group 2 model to determine group 2 estimation
+                // sample (i.e., the observations from group 2 that need to be
+                // included in group 1 svy estimation); this is needed because
+                // -svy, subpop()- does not exclude observations with missings
+                // outside of the subpop
+                if `"`svy_subpop'"'=="" local svysub subpop(if `by'==`group2')
+                else local svysub subpop(`subpop' if `by'==`group2')
+                qui svy linearized, `svysub' `svy_opts': ///
+                    `cmd2' `depvar' `xvars' `cmd2rhs' if `touse', ///
+                    `options' `cmd2opts'
+                qui replace `touse' = 0 if !e(sample)
+            }
+            if `"`svy_subpop'"'=="" local svysub subpop(if `by'==`group`g'')
+            else local svysub subpop(`subpop' if `by'==`group`g'')
+            `qui' svy linearized, `svysub' `svy_opts': ///
+                `cmd`g'' `depvar' `xvars' `cmd`g'rhs' if `touse', ///
+                `options' `cmd`g'opts'
+            if `g'==1 {
+                // remove group 1 observations that are not in estimation sample
+                qui replace `touse' = 0 if !e(sample)
+            }
         }
         else {
-            `qui' `cmd`g'' `depvar' `xvars' `cmd`g'rhs' if `touse' & `by'==`group`g'' ///
-                [`regweight'`exp'], `regvce' `options' `cmd`g'opts'
+            `qui' `cmd`g'' `depvar' `xvars' `cmd`g'rhs' ///
+                if `touse' & `by'==`group`g'' [`regweight'`exp'], ///
+                `regvce' `options' `cmd`g'opts'
         }
         CheckCoefs "`mlbl`g''" "`xvars'"
         if r(err) local haserrmsg 1
         local offset`g' `e(offset)'
-    // determine sample
+        // determine sample
         qui gen byte `touse`g'' = e(sample)==1
         Marksubpop `e(subpop)', g(`subpop`g'')
         qui replace `subpop`g'' = 0 if `touse`g''==0
-        if "`svy'"=="" {
-            qui replace `touse`g'' = 0 if `subpop`g''==0
-        }
         if "`e(cmd)'"=="heckman" | "`e(cmd)'"=="heckprob" {
             local depvar: word 1 of `e(depvar)'
             qui replace `subpop`g'' = 0 if `depvar'>=.
-            if "`svy'"=="" {
-                qui replace `touse`g'' = 0 if `depvar'>=.
-            }
             local depvar_s: word 2 of `e(depvar)'
             if "`depvar_s'"!="" {
                 qui replace `subpop`g'' = 0 if `depvar_s'==0
-                if "`svy'"=="" {
-                    qui replace `touse`g'' = 0 if `depvar_s'==0
-                }
             }
         }
-    // store model
+        // store model
         if `"`cmd`g'sto'"'!="" {
             est sto `cmd`g'sto'
             di as txt "(`mlbl`g'' saved as " ///
@@ -446,7 +553,7 @@ program define OAXACA
             tempname cmd`g'sto
             est sto `cmd`g'sto'
         }
-    // if no suest: collect results
+        // if no suest: collect results
         if `suest'==0 {
             tempname b`g'
             mat `b`g'' = e(b)
@@ -464,10 +571,36 @@ program define OAXACA
                 if "`e(vce)'"!="robust" local robreg 0
             }
         }
+        // group size
+        if "`weight'"!="fweight" {
+            qui count if `touse`g'' & `by'==`group`g''
+            local N`g' = r(N)
+            if "`e(cmd)'"=="heckman" | "`e(cmd)'"=="heckprob" {
+                qui count if `touse`g'' & `subpop`g''
+                local N`g'_selected = r(N)
+            }
+        }
+        else {
+            su `touse' [`weight'`exp'] if `touse`g'' & `by'==`group`g'', mean
+            local N`g' = r(sum_w)
+            if "`e(cmd)'"=="heckman" | "`e(cmd)'"=="heckprob" {
+                su `touse' [`weight'`exp'] if `touse`g'' & `subpop`g'', mean
+                local N`g'_selected = r(sum_w)
+            }
+        }
     }
+    // overall sample size
     qui replace `touse' = 0 if `touse1'==0 & `touse2'==0
+    if "`weight'"!="fweight" {
+        qui count if `touse'
+        local N = r(N)
+    }
+    else {
+        su `touse' [`weight'`exp'] if `touse', mean
+        local N = r(sum_w)
+    }
 
-// Estimate pooled model or restore reference model
+    // Estimate pooled model or restore reference model
     local g 2
     if `"`reference'`pooled'`omega'"'!="" {
         local ++g
@@ -480,9 +613,11 @@ program define OAXACA
             local mlbl`g' "pooled model"
             if `"`pooled'"'!="" local includeby `"`by'"'
             if "`svy'"!="" {
-                `qui' svy `svy_vcetype', subpop(`svy_subpop') `svy_opts': ///
-                `cmd3' `depvar' `xvars' `cmd3rhs' `includeby' if `touse', ///
-                `options' `cmd3opts'
+                if `"`svy_subpop'"'=="" local svysub
+                else local svysub subpop(`subpop')
+                `qui' svy linearized, `svysub' `svy_opts': ///
+                    `cmd3' `depvar' `xvars' `cmd3rhs' `includeby' ///
+                    if `touse', `options' `cmd3opts'
             }
             else {
                 `qui' `cmd3' `depvar' `xvars' `cmd3rhs' `includeby' if `touse' ///
@@ -490,7 +625,7 @@ program define OAXACA
             }
             CheckCoefs "`mlbl`g''" "`xvars'"
             if r(err) local haserrmsg 1
-        // store model
+            // store model
             if `"`cmd`g'sto'"'!="" {
                 est sto `cmd`g'sto'
                 di as txt "(`mlbl`g'' saved as " ///
@@ -502,7 +637,7 @@ program define OAXACA
             }
         }
         local offset`g' `e(offset)'
-    // if no suest: collect results
+        // if no suest: collect results
         if `suest'==0 {
             tempname b3
             mat `b`g'' = e(b)  // note: `g' = 3
@@ -522,7 +657,7 @@ program define OAXACA
         }
     }
 
-// Error in case of estimations problems
+    // Error in case of estimations problems
     if "`relax'"=="" & `haserrmsg' {
         di as err "dropped coefficients or zero variances encountered"
         if "`qui'"!="" {
@@ -532,7 +667,7 @@ program define OAXACA
         exit 499
     }
 
-// Compile joint coefficients vector and variance matrix
+    // Compile joint coefficients vector and variance matrix
     if "`noisily2'"=="" local qui quietly
     if `robreg' {
         local e_vce     "robust"
@@ -541,7 +676,8 @@ program define OAXACA
     tempname b
     if `se' tempname V
     if `suest' {
-        `qui' suest `cmd1sto' `cmd2sto' `cmd3sto' `reference', `svy' `vce' `cluster'
+        `qui' suest `cmd1sto' `cmd2sto' `cmd3sto' `reference', ///
+            `svy' `vce' `cluster'
         if `"`suest2'"'!="" {
             est sto `suest2'
             di as txt "(suest results saved as " ///
@@ -571,7 +707,7 @@ program define OAXACA
         }
     }
 
-// Add offsets
+    // Add offsets
     local offset `offset1' `offset2' `offset3'
     local offset: list uniq offset
     if `:list sizeof offset'>1 {
@@ -584,7 +720,7 @@ program define OAXACA
         mata: oaxaca_addoffset()
     }
 
-// Insert missing coefs
+    // Insert missing coefs
     local dropped `xvars'
     forv i = 1/`g' {
         tempname tmp
@@ -622,7 +758,7 @@ program define OAXACA
     }
     mata: oaxaca_insertmissingcoefs()
 
-// Add constant if needed and update coeflist
+    // Add constant if needed and update coeflist
     if `cons' {
         tempname xcons
         qui gen byte `xcons' = 1
@@ -635,7 +771,7 @@ program define OAXACA
         local coefs: subinstr local coefs "`voffset'" "_offset", word all
     }
 
-// Normalize dummy groups (deviation contrast transform)
+    // Normalize dummy groups (deviation contrast transform)
     if `"`normalize'"'!="" {
         mata: oaxaca_normalize()
         di as txt "(normalized: " _c
@@ -655,99 +791,51 @@ program define OAXACA
         di ")"
     }
 
-// Create reference model from weights()
+    // Create reference model from weights()
     if `"`weights'"'!="" {
         mata: oaxaca_add_b_ref()
     }
 
-// Compute means
-    tempname x Vx
-    if `suest' {
-        tempname grpvar
-        gen byte `grpvar'= 0
-        qui replace `grpvar' = 1 if `subpop1'
-        capt assert (`grpvar'==0) if `subpop2'
-        if _rc {
-            error "overlapping samples (groups not distinct)"
-            exit 498
+    // Compute means
+    tempname x Vx grpvar
+    qui gen byte `grpvar' = 1 if `by'==`group1' & `touse'
+    qui replace  `grpvar' = 2 if `by'==`group2' & `touse'
+    if "`svy'"=="" {
+        `qui' mean `xvars' if `subpop1' | `subpop2' [`weight'`exp'], ///
+            over(`grpvar') `vce' `cluster'
+        if e(N_clust)<. {
+            local e_N_clust = e(N_clust)
+            local e_clustvar "`e(clustvar)'"
         }
-        qui replace `grpvar' = 2 if `subpop2'
-        if "`svy'"=="" {
-            `qui' mean `xvars' if `touse' [`weight'`exp'], ///
-                over(`grpvar') `vce' `cluster'
-            if e(N_clust)<. {
-                local e_N_clust = e(N_clust)
-                local e_clustvar "`e(clustvar)'"
-            }
-        }
-        else {
-            `qui' svy `svy_type', ///
-                subpop(`svy_subpop' & (`subpop1' | `subpop2')) `svy_opts' : ///
-                    mean `xvars' if `touse', over(`grpvar')
-            local e_prefix "`e(prefix)'"
-            local e_N_strata = e(N_strata)
-            local e_N_psu = e(N_psu)
-            local e_N_pop = e(N_pop)
-            local e_df_r = e(df_r)
-        }
-        if "`e(vce)'"!="analytic" & "`e(vce)'"!="" {
-            local e_vce     "`e(vce)'"
-            local e_vcetype "`e(vcetype)'"
-        }
-        local e_wtype "`e(wtype)'"
-        local e_wexp `"`e(wexp)'"'
-        mat `x' = e(b)
-        mat `Vx' = e(V)
-        local N1 = el(e(_N),1,1)
-        local N2 = el(e(_N),1,2)
-        if `cons' {
-            local coleq: coleq `x'
-            local coleq: subinstr local coleq "`xcons'" "_cons", word all
-            mat coleq `x' = `coleq'
+    }
+    else {
+        `qui' svy linearized, subpop(if `subpop1' | `subpop2') ///
+            `svy_opts' : mean `xvars' if `touse', over(`grpvar')
+        local e_prefix "`e(prefix)'"
+        local e_N_strata = e(N_strata)
+        local e_N_psu = e(N_psu)
+        local e_N_pop = e(N_pop)
+        local e_df_r = e(df_r)
+    }
+    if `se' & "`e(vce)'"!="analytic" & "`e(vce)'"!="" {
+        local e_vce     "`e(vce)'"
+        local e_vcetype "`e(vcetype)'"
+    }
+    local e_wtype "`e(wtype)'"
+    local e_wexp `"`e(wexp)'"'
+    mat `x' = e(b)
+    if `se' mat `Vx' = e(V)
+    if `cons' {
+        local coleq: coleq `x'
+        local coleq: subinstr local coleq "`xcons'" "_cons", word all
+        mat coleq `x' = `coleq'
+        if `se' {
             mat coleq `Vx' = `coleq'
             mat roweq `Vx' = `coleq'
         }
-        mata: oaxaca_reorderxandVx()
     }
-    else {
-        tempname xtmp Vxtmp
-        local tmp
-        forv i = 1/2 {
-            if "`svy'"=="" {
-                `qui' mean `xvars' if `touse' & `touse`i'' [`weight'`exp'], `vce' `cluster'
-            }
-            else {
-                `qui' svy `svy_type', subpop(`svy_subpop' & `subpop`i'') `svy_opts' : ///
-                    mean `xvars' if `touse' & `touse`i''
-            }
-            mat `x`tmp'' = e(b)
-            local N`i' = el(e(_N),1,1)
-            local e_wtype "`e(wtype)'"
-            local e_wexp `"`e(wexp)'"'
-            if `cons' {
-                local coln: colnames `x`tmp''
-                local coln: subinstr local coln "`xcons'" "_cons", word
-                mat coln `x`tmp'' = `coln'
-            }
-            mat coleq `x`tmp'' = "x`i'"
-            if `se' {
-                mat `Vx`tmp'' = e(V)
-                if `cons' {
-                    mat coln `Vx`tmp'' = `coln'
-                    mat rown `Vx`tmp'' = `coln'
-                }
-                mat coleq `Vx`tmp'' = "x`i'"
-                mat roweq `Vx`tmp'' = "x`i'"
-            }
-            local tmp tmp
-        }
-        mat `x' = `x', `xtmp'
-        mat drop `xtmp'
-        if `se' {
-            MatAppendDiag `Vx' `Vxtmp'
-            mat drop `Vxtmp'
-        }
-    }
+    mata: oaxaca_reorderxandVx()
+    if `se' & !`suest' mata: oaxaca_Vx_blockdiag()
     if `"`x1'`x2'"'!="" {
         SetXvals `x' `Vx', se(`se') `x1' `x2'
     }
@@ -781,10 +869,10 @@ program define OAXACA
         mat drop `Vx'
     }
 
-// Parse adjust() => returns locals adjust and coefsadj
+    // Parse adjust() => returns locals adjust and coefsadj
     Parseadjust, `adjust' coefs(`coefs')
 
-// Compute decomposition
+    // Compute decomposition
     tempname b0
     matrix rename `b' `b0'
     if `se' {
@@ -797,42 +885,41 @@ program define OAXACA
     }
     mata: oaxaca()
 
-// Post results and display
+    // Post results
     if `"`threefold2'"'!="" local threefold threefold(`threefold2')
-    PostResults `b' `V', b0(`b0') v0(`V0') esample(`touse') ///
+    PostResults `b' `V', k_eq(`k_eq') b0(`b0') v0(`V0') esample(`touse') ///
         depname(`depvar') by(`by') group1(`group1') group2(`group2') ///
         model(`linear'`logit'`probit') threefold(`threefold') ///
         refcoefs(`pooled'`omega'`reference') weights(`weights') ///
-        adjust(`adjust') normalized(`normalized') ///
-        legend(`vgroups') n1(`N1') n2(`N2')  ///
+        split(`split') adjust(`adjust') normalized(`normalized') ///
+        legend(`vgroups') n(`N') n1(`N1') n2(`N2') ///
+        nsel1(`N1_selected') nsel2(`N2_selected') ///
         suest(`suest') fixed(`fixedopt') wtype(`e_wtype') wexp(`e_wexp') ///
         vce(`e_vce') vcetype(`e_vcetype') n_clust(`e_N_clust') ///
         clustvar(`e_clustvar') prefix(`e_prefix') n_strata(`e_N_strata') ///
         n_psu(`e_N_psu') n_pop(`e_N_pop') df_r(`e_df_r')
-
-    Display, `level' `eform' `xb' `legend'
 end
 
 program PostResults, eclass
-    syntax anything [, b0(str) v0(str) esample(str) ///
+    syntax anything [, k_eq(str) b0(str) v0(str) esample(str) ///
         depname(str) by(str) group1(str asis) group2(str asis) ///
-        model(str) threefold(str) refcoefs(str) weights(str) adjust(str) ///
-        normalized(str asis) legend(str asis) n1(str) n2(str) ///
+        model(str) threefold(str) refcoefs(str) weights(str) split(str) ///
+        adjust(str) normalized(str asis) legend(str asis) ///
+        n(str) n1(str) n2(str) nsel1(str) nsel2(str) ///
         suest(str) fixed(str) wtype(str) wexp(str asis) ///
         vce(str) vcetype(str) n_clust(str) ///
         clustvar(str) prefix(str) n_strata(str) ///
         n_psu(str) n_pop(str) df_r(str) ]
-    qui count if `esample'
     if `"`depname'"'!="" {
         local depvar `"`depname'"'
         local depname `"depname(`depname')"'
     }
-    eret post `anything', esample(`esample') obs(`r(N)') `depname'
+    eret post `anything', esample(`esample') obs(`n') `depname'
     foreach opt in prefix clustvar vcetype vce wexp wtype  {
         eret local `opt' `"``opt''"'
     }
     if `suest' eret local suest suest
-    foreach opt in fixed adjust normalized legend threefold ///
+    foreach opt in fixed adjust normalized legend split threefold ///
         refcoefs weights model depvar {
         eret local `opt' `"``opt''"'
     }
@@ -841,10 +928,12 @@ program PostResults, eclass
     eret local by `"`by'"'
     eret local title "Blinder-Oaxaca decomposition"
     eret local cmd "oaxaca"
-    if "`n1'`n2'"!="" {
-        eret scalar N_1 = `n1'
-        eret scalar N_2 = `n2'
-    }
+    eret scalar N_1 = `n1'
+    eret scalar N_2 = `n2'
+    eret scalar k_eq = `k_eq'
+    eret scalar k_eform = `k_eq'
+    if "`nsel1'"!="" eret scalar N_1_selected = `nsel1'
+    if "`nsel2'"!="" eret scalar N_2_selected = `nsel2'
     foreach opt in N_clust N_strata N_psu N_pop df_r {
         local optt = lower("`opt'")
         if `"``optt''"'!="" {
@@ -878,14 +967,8 @@ program Parsesvyopt2
 end
 
 program Parsesvysubpop
-    syntax [varname(default=none)] [if/]
-    if `"`if'"'!="" {
-        local iff `"(`if') & "'
-    }
-    if "`varlist'"!="" {
-        local iff `"`varlist' & `iff'"'
-    }
-    c_local svy_subpop `"if `iff'1"'
+    syntax [varname(default=none)] [if]
+    c_local svy_subpop `varlist' `if'
 end
 
 program VCE_iscluster
@@ -1318,6 +1401,7 @@ void oaxaca_normalize()
     ncoef   = rows(stripe)/neq
     stripe  = stripe[|1,2 \ ncoef,2|] // coefs from pick first eq
     se      = (st_local("se")=="1")
+    pcons   = .
     if (se) V = st_matrix(st_local("V"))
     D = diag(J(1,ncoef,1))
     for (i=1; i<=cols(norm); i++) {
@@ -1332,10 +1416,13 @@ void oaxaca_normalize()
         D[p, p']    = D[p, p'] :- (1/k)
         if (check) {
             for (j=1; j<=2; j++) {
-                st_view(X, ., normi[|2 \ k+1|], st_local("subpop" + strofreal(j)))
-                err = (normi[1]=="_cons" ? any(rowsum(X):!=1) :
-                    mreldif(rowsum(X),st_data(., normi[1],
-                        st_local("subpop" + strofreal(j))))>1e-7)
+                st_view(X=., ., normi[|2 \ k+1|], st_local("subpop" + strofreal(j)))
+                p = select(1::rows(X), !rowmissing(X)) // select nonmissing (reuse of p)
+                X = rowsum(X)
+                if (normi[1]=="_cons") err = any(X[p]:!=1)
+                else err = (mreldif(X,
+                    st_data(., normi[1], st_local("subpop" + strofreal(j)))[p])
+                    > 1e-7)
                 if (err) {
                     printf("{err}inconsistent dummy set: %s\n", 
                         oaxaca_invtokens(normi[|2 \ k+1|]))
@@ -1431,6 +1518,16 @@ void oaxaca_reorderxandVx()
         st_matrixcolstripe(st_local("Vx"), stripe)
         st_matrixrowstripe(st_local("Vx"), stripe)
     }
+}
+
+void oaxaca_Vx_blockdiag()
+{
+    real scalar r
+    real matrix V
+
+    V = st_matrix(st_local("Vx"))
+    r = rows(V) / 2
+    st_replacematrix(st_local("Vx"), blockdiag(V[|1,1\r,r|], V[|r+1,r+1\.,.|]))
 }
 
 void oaxaca_setfixedXtozero(real scalar eq)
@@ -1762,6 +1859,7 @@ void oaxaca()
         st_matrixcolstripe(st_local("V"), cstripe)
         st_matrixrowstripe(st_local("V"), cstripe)
     }
+    st_local("k_eq", strofreal(rows(uniqrows(cstripe[,1]))))
 }
 
 real matrix oaxaca_vgroups(

@@ -3,7 +3,7 @@ d oaxaca: Stata module to compute the Blinder-Oaxaca decomposition
 d 
 d Author: Ben Jann, University of Bern, ben.jann@unibe.ch
 d
-d Distribution-Date: 20230418
+d Distribution-Date: 20230424
 f oaxaca.ado
 f oaxaca.dta
 f oaxaca.hlp
